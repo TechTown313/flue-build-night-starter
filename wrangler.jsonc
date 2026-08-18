@@ -1,0 +1,13 @@
+// FROZEN CONFIG — identical across every checkpoint; `npm run catchup N` never touches it.
+// Durable Object migration entries must never be rewritten or reordered once deployed.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "triage-agent",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "ai": { "binding": "AI" },
+  "observability": { "traces": { "enabled": true } },
+  "migrations": [
+    { "tag": "flue-class-FlueTriageAgent", "new_sqlite_classes": ["FlueTriageAgent"] }
+  ]
+}

@@ -1,0 +1,183 @@
+[
+  {
+    "id": "INC-1001",
+    "title": "Checkout page returns a blank screen for every customer",
+    "service": "checkout",
+    "reportedBy": "Amara (storefront team)",
+    "symptoms": [
+      "100% of visitors see a white screen after clicking Pay Now",
+      "Zero successful orders in the last 45 minutes",
+      "Browser console shows 'TypeError: cart is undefined'"
+    ],
+    "recentChanges": [
+      "New discount-code feature deployed 50 minutes ago"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1002",
+    "title": "Eastern Market kiosk prints receipts twice",
+    "service": "kiosk",
+    "reportedBy": "Darnell (Eastern Market vendor)",
+    "symptoms": [
+      "Every third sale prints two identical receipts",
+      "Sales totals are still correct",
+      "Only affects the two kiosks in Shed 3"
+    ],
+    "recentChanges": [
+      "Receipt printer firmware updated last Tuesday"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1003",
+    "title": "Member portal login fails for accounts created this week",
+    "service": "member-portal",
+    "reportedBy": "Priya (TechTown front desk)",
+    "symptoms": [
+      "New members get 'invalid password' even with the correct password",
+      "Members who signed up before Monday can log in fine",
+      "About 40 new members are locked out"
+    ],
+    "recentChanges": [
+      "Password hashing library upgraded on Monday",
+      "Welcome-email template redesigned on Monday"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1004",
+    "title": "Coney order tracker shows every order as 'still cooking'",
+    "service": "coney-tracker",
+    "reportedBy": "Luis (Lafayette lunch crew)",
+    "symptoms": [
+      "Orders are delivered but the tracker never updates past 'still cooking'",
+      "Customers keep calling to ask where their coneys are",
+      "Kitchen dashboard shows the correct status"
+    ],
+    "recentChanges": [
+      "Status webhook URL changed during Friday's cleanup"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1005",
+    "title": "Payment processing is down — cards declined for all Detroit pop-up vendors",
+    "service": "payments",
+    "reportedBy": "Keisha (vendor success)",
+    "symptoms": [
+      "Every card transaction fails with 'gateway timeout'",
+      "Roughly $4,000/hour in sales are failing across 30 vendors",
+      "Payment provider status page reports no issues on their end"
+    ],
+    "recentChanges": [
+      "API credentials rotated this morning"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1006",
+    "title": "Newsletter signup form typo: 'Detriot' on the confirmation page",
+    "service": "marketing-site",
+    "reportedBy": "Malik (community team)",
+    "symptoms": [
+      "Confirmation page spells Detroit as 'Detriot'",
+      "Signups still work perfectly",
+      "Two people have emailed about it (politely)"
+    ],
+    "recentChanges": [
+      "Confirmation page copy edited last week"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1007",
+    "title": "Parking pass QR codes scan slowly at the Woodward garage",
+    "service": "parking-pass",
+    "reportedBy": "Rosa (garage operations)",
+    "symptoms": [
+      "QR scans take 8-10 seconds instead of the usual 1 second",
+      "Lines are backing up onto Woodward during morning rush",
+      "Scans do eventually succeed"
+    ],
+    "recentChanges": [
+      "Pass-validation service moved to a new database Sunday night"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1008",
+    "title": "Event RSVP emails going to spam for Gmail users",
+    "service": "events",
+    "reportedBy": "Jordan (Launchpad events)",
+    "symptoms": [
+      "Gmail users report RSVP confirmations landing in spam",
+      "Outlook and Yahoo deliver normally",
+      "About half of attendees use Gmail"
+    ],
+    "recentChanges": [
+      "Started sending from a new email domain two weeks ago"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1009",
+    "title": "Rider app crashes on launch after last night's update",
+    "service": "rider-app",
+    "reportedBy": "Tasha (mobility team)",
+    "symptoms": [
+      "App closes immediately on open for all Android users",
+      "iOS users are unaffected",
+      "1-star reviews arriving every few minutes"
+    ],
+    "recentChanges": [
+      "Version 4.2.0 released to the Play Store last night"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1010",
+    "title": "Founder dashboard shows last month's revenue numbers",
+    "service": "founder-dashboard",
+    "reportedBy": "Omar (Venture313 program ops)",
+    "symptoms": [
+      "Revenue tiles are stuck on July data",
+      "Underlying reports export the correct August numbers",
+      "Board meeting is in three days"
+    ],
+    "recentChanges": [
+      "Nightly data-sync job was paused during maintenance and may not have restarted"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1011",
+    "title": "Wi-Fi voucher generator hands out expired vouchers",
+    "service": "wifi-vouchers",
+    "reportedBy": "Grace (TechTown facilities)",
+    "symptoms": [
+      "New vouchers show an expiration date of yesterday",
+      "Guests can't get online in the conference rooms",
+      "Staff Wi-Fi unaffected"
+    ],
+    "recentChanges": [
+      "Server timezone changed from UTC to America/Detroit on Friday"
+    ],
+    "status": "open"
+  },
+  {
+    "id": "INC-1012",
+    "title": "Search on the makers directory returns zero results for 'bakery'",
+    "service": "makers-directory",
+    "reportedBy": "Devon (small-biz support)",
+    "symptoms": [
+      "Searching 'bakery' returns nothing even though 12 bakeries are listed",
+      "Searching 'bakeries' works fine",
+      "Other categories search normally"
+    ],
+    "recentChanges": [
+      "Search index rebuilt with a new word-stemming setting"
+    ],
+    "status": "open"
+  }
+]

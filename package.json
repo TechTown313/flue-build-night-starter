@@ -1,0 +1,27 @@
+{
+  "name": "flue-build-night-starter",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Incident Triage Agent starter for 'Build It. Break It. Bring It Back' — an Advanced AI Build Night (Launchpad Detroit / Venture313 at TechTown Detroit).",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "deploy": "vite build && wrangler deploy",
+    "preflight": "node scripts/preflight.mjs",
+    "catchup": "node scripts/catchup.mjs"
+  },
+  "dependencies": {
+    "@flue/runtime": "^2.0.3",
+    "hono": "^4.13.2",
+    "valibot": "^1.4.2"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.52.1",
+    "@flue/cli": "^2.0.3",
+    "@flue/vite": "^2.0.3",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.1",
+    "wrangler": "^4.123.0"
+  }
+}
