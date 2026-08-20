@@ -10,6 +10,7 @@
 // `useInitialData()` and its `useAgentFinish` hook calls `sendReply` here.
 import { Resend } from 'resend';
 import * as v from 'valibot';
+import { renderEmailShell, renderMarkdown, renderPlanCard } from './email-html.ts';
 import type { ActionPlan } from './schema.ts';
 
 export const FROM = 'Triage Agent <triage@techtowndetroit.dev>';
@@ -34,6 +35,17 @@ export const EmailMetaSchema = v.object({
 });
 export type EmailMeta = v.InferOutput<typeof EmailMetaSchema>;
 
+/**
+ * Every outbound reply carries BOTH renderings: `html` (markdown converted to
+ * email-safe HTML — the model writes bold/lists/headings, and without this
+ * the asterisks show literally in inboxes) and `text` (the original plain
+ * rendering, kept for deliverability and clients that prefer it).
+ */
+export interface ReplyBody {
+  text: string;
+  html: string;
+}
+
 /** The structured plan rendered as a plain-text block, or [] when no plan. */
 function planBlock(plan: ActionPlan | null): string[] {
   if (!plan) return [];
@@ -52,13 +64,22 @@ function planBlock(plan: ActionPlan | null): string[] {
  * FALLBACK format (finish-hook recap path): plan block first, optional note
  * after — the shape the original hook-only design always sent.
  */
-export function formatReply(plan: ActionPlan | null, agentText: string): string {
+export function formatReply(plan: ActionPlan | null, agentText: string): ReplyBody {
+  const NO_PLAN = 'Your report was received, but the agent returned no plan.';
   const lines: string[] = [...planBlock(plan)];
   const text = agentText.trim();
   if (text) lines.push('', text);
-  if (lines.length === 0) lines.push('Your report was received, but the agent returned no plan.');
+  if (lines.length === 0) lines.push(NO_PLAN);
   lines.push('', SIGN_OFF, '', '--', FOOTER);
-  return lines.join('\n');
+
+  const parts: string[] = [];
+  if (plan) parts.push(renderPlanCard(plan));
+  if (text) parts.push(renderMarkdown(text));
+  if (parts.length === 0) parts.push(renderMarkdown(NO_PLAN));
+  return {
+    text: lines.join('\n'),
+    html: renderEmailShell(parts.join('\n'), SIGN_OFF, FOOTER),
+  };
 }
 
 /**
@@ -66,7 +87,8 @@ export function formatReply(plan: ActionPlan | null, agentText: string): string 
  * to the sender comes FIRST; the structured plan block is appended only when
  * a plan was submitted in this same run (fresh triage), never on follow-ups.
  */
-export function formatAgentReply(agentText: string, plan: ActionPlan | null): string {
+export function formatAgentReply(agentText: string, plan: ActionPlan | null): ReplyBody {
+  const RECEIVED = 'Your report was received.';
   const lines: string[] = [];
   const text = agentText.trim();
   if (text) lines.push(text);
@@ -75,15 +97,23 @@ export function formatAgentReply(agentText: string, plan: ActionPlan | null): st
     if (lines.length > 0) lines.push('');
     lines.push(...block);
   }
-  if (lines.length === 0) lines.push('Your report was received.');
+  if (lines.length === 0) lines.push(RECEIVED);
   lines.push('', SIGN_OFF, '', '--', FOOTER);
-  return lines.join('\n');
+
+  const parts: string[] = [];
+  if (text) parts.push(renderMarkdown(text));
+  if (plan) parts.push(renderPlanCard(plan));
+  if (parts.length === 0) parts.push(renderMarkdown(RECEIVED));
+  return {
+    text: lines.join('\n'),
+    html: renderEmailShell(parts.join('\n'), SIGN_OFF, FOOTER),
+  };
 }
 
 export async function sendReply(options: {
   to: string;
   subject: string;
-  body: string;
+  body: ReplyBody;
   inReplyTo: string | undefined;
   references: string | undefined;
 }): Promise<{ error?: string }> {
@@ -95,11 +125,14 @@ export async function sendReply(options: {
     headers['In-Reply-To'] = messageId;
     headers['References'] = options.references ? `${options.references} ${messageId}` : messageId;
   }
+  // Both renderings go out on every send: HTML for the inbox, plain text for
+  // deliverability and clients that prefer it (Resend accepts both).
   const result = await client.emails.send({
     from: FROM,
     to: options.to,
     subject: replySubject(options.subject),
-    text: options.body,
+    text: options.body.text,
+    html: options.body.html,
     headers,
   });
   if (result.error) {

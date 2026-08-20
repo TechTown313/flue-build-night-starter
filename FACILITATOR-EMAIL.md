@@ -149,6 +149,10 @@ From a personal **Gmail** account AND an **Outlook/Hotmail** account:
      just the subject line.** A subject-only reply means the API key can't read
      received email (see step 2.1 — use a full-access key) — the fallback path
      is silent, so this check is the only way to catch it.
+   - **Check the formatting renders in Gmail: bold text, lists, and the plan
+     card (severity badge + next steps) should display as styled HTML, not
+     literal asterisks** — replies now go out as HTML with a plain-text part
+     alongside.
    - **Check it landed in the inbox, not spam, on BOTH providers.** If it's in
      spam: confirm SPF/DKIM show verified in Resend, add the DMARC record, and
      send 2–3 more test rounds — fresh domains warm up fast at this volume.

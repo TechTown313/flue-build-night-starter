@@ -111,7 +111,7 @@ export function Triage() {
     useTool({
       name: 'send_reply',
       description:
-        'Email your reply to the reporter. `body` is the complete conversational message they will read (plain text). Recipient, subject, threading, sign-off, and footer are handled automatically — and after a fresh triage the structured action plan is appended automatically, so never restate severity/category/next-steps in the body. Call this exactly once at the end of every turn.',
+        'Email your reply to the reporter. `body` is the complete conversational message they will read (plain text or simple markdown — bold, lists, and headings render nicely). Recipient, subject, threading, sign-off, and footer are handled automatically — and after a fresh triage the structured action plan is appended automatically, so never restate severity/category/next-steps in the body. Call this exactly once at the end of every turn.',
       input: v.object({ body: v.pipe(v.string(), v.nonEmpty()) }),
       async run({ data }) {
         const seen = readNow(setEmailsSeen);
