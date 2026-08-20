@@ -6,12 +6,14 @@ import { lookupIncident } from './tools/lookup-incident.ts';
 
 export function Triage() {
   // MODEL — the free-tier-friendly default (your free Cloudflare account gets
-  // 10,000 Workers AI neurons per day; a basic triage costs roughly 20, and a
-  // delegation turn costs more — check the dashboard usage page for real numbers).
-  // Optional upgrade — better answers, several times the neuron cost; swap back
-  // if you see a neuron-limit error:
-  //   useModel('cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast');
-  useModel('cloudflare/@cf/qwen/qwen3-30b-a3b-fp8');
+  // 10,000 Workers AI neurons per day; check the dashboard usage page for real
+  // per-triage numbers). Must be a model with the full OpenAI chat schema:
+  // llama-3.3-70b and qwen3-30b reject Flue's tool-result turns with a 400
+  // (assistant content:null) on the AI binding under @flue/runtime 2.0.3.
+  // Optional upgrade — bigger model, more neurons per turn; swap back if you
+  // see a neuron-limit error:
+  //   useModel('cloudflare/@cf/nvidia/nemotron-3-120b-a12b');
+  useModel('cloudflare/@cf/zai-org/glm-4.7-flash');
 
   // Durable per-conversation state: survives server restarts because it lives in
   // the agent's Durable Object (its private saved-game file).

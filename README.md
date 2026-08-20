@@ -231,9 +231,10 @@ npx vite build && npx wrangler deploy
 
 Your agent gets a public URL like `https://triage-agent.<your-subdomain>.workers.dev`.
 It runs on **your** free Cloudflare account: 10,000 free Workers AI neurons per day
-and 100,000 requests per day. A basic triage costs roughly 20 neurons; a delegation
-turn costs more because the scribe is a second model session — either way you have
-hundreds of interactions of headroom for the night. No credit card at any step.
+and 100,000 requests per day. A basic triage costs a small number of neurons — check
+the dashboard usage page for real numbers; a delegation turn costs more because the
+scribe is a second model session — either way you have plenty of headroom for the
+night. No credit card at any step.
 
 ### Reference deploy (facilitators)
 
