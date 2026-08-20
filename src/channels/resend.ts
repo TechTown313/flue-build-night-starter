@@ -55,6 +55,13 @@ async function handleInboundEmail(
 ): Promise<void> {
   const sender = extractAddress(envelope.from);
   if (!sender || sender.toLowerCase() === OUR_ADDRESS) return; // never mail ourselves (loop guard)
+  // Loop guard #2: never answer machines. A bounce (MAILER-DAEMON) or an
+  // out-of-office replying to OUR reply re-enters this webhook and would burn
+  // the daily send quota in a two-party mail loop.
+  if (isAutomatedSender(sender)) {
+    console.warn('resend channel: skipping automated sender', sender);
+    return;
+  }
 
   // The webhook carries envelope data only; fetch the full message for the body.
   let full: GetReceivingEmailResponseSuccess | null = null;
@@ -64,6 +71,13 @@ async function handleInboundEmail(
     full = result.data;
   } catch (error) {
     console.error('resend channel: could not fetch full email, falling back to subject', error);
+  }
+
+  // Loop guard #3: standard auto-response headers (RFC 3834 etc.) mark
+  // out-of-office and bounce mail even when the sender address looks human.
+  if (isAutoResponse(full?.headers)) {
+    console.warn('resend channel: skipping auto-response from', sender);
+    return;
   }
 
   const subject = (full?.subject ?? envelope.subject ?? '').trim();
@@ -154,7 +168,9 @@ async function sendReply(options: {
   inReplyTo: string | undefined;
   references: string | undefined;
 }): Promise<void> {
-  const headers: Record<string, string> = {};
+  // RFC 3834: mark our replies as automated so well-behaved auto-responders
+  // (out-of-office, vacation) stay silent instead of looping with us.
+  const headers: Record<string, string> = { 'Auto-Submitted': 'auto-replied' };
   const messageId = normalizeMessageId(options.inReplyTo);
   if (messageId) {
     headers['In-Reply-To'] = messageId;
@@ -165,7 +181,7 @@ async function sendReply(options: {
     to: options.to,
     subject: replySubject(options.subject),
     text: options.body,
-    ...(messageId ? { headers } : {}),
+    headers,
   });
   if (result.error) {
     console.error('resend channel: reply send failed', result.error.message);
@@ -178,6 +194,23 @@ function replySubject(subject: string): string {
 }
 
 // ---- small helpers ----
+
+/** Mailbox names that only ever belong to machines: bounces, list mail, no-reply senders. */
+function isAutomatedSender(address: string): boolean {
+  const localPart = address.split('@')[0]?.toLowerCase() ?? '';
+  return /^(mailer-daemon|postmaster|bounces?|no-?reply|do-?not-?reply)([+._-]|$)/.test(localPart);
+}
+
+/** True when standard auto-response headers say this mail came from a robot. */
+function isAutoResponse(headers: Record<string, string> | null | undefined): boolean {
+  const autoSubmitted = headerValue(headers, 'auto-submitted')?.trim().toLowerCase();
+  if (autoSubmitted && autoSubmitted !== 'no') return true; // RFC 3834
+  const precedence = headerValue(headers, 'precedence')?.trim().toLowerCase();
+  if (precedence === 'bulk' || precedence === 'auto_reply' || precedence === 'junk') return true;
+  if (headerValue(headers, 'x-autoreply') !== undefined) return true;
+  if (headerValue(headers, 'x-autorespond') !== undefined) return true;
+  return false;
+}
 
 /** "Jo Reporter <jo@example.com>" -> "jo@example.com" */
 function extractAddress(from: string | undefined): string {

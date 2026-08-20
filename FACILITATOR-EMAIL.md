@@ -53,8 +53,14 @@ scale, hours apart.
 
 ## 2. Credentials
 
-1. Resend dashboard → **API Keys** → create key (sending access is enough) →
+1. Resend dashboard → **API Keys** → create key with **Full access** →
    copy the `re_...` value once.
+   **Not sending-only:** the channel calls `GET /emails/receiving/{id}` to fetch
+   the inbound message body (`client.emails.receiving.get(...)` in
+   `src/channels/resend.ts`). A sending-scoped key fails that read and the code
+   degrades *silently* to subject-only triage — every reply would ignore the
+   email body while the dashboard still looks green. If you must use a narrower
+   scope, verify at rehearsal that it permits that read (see step 4.2).
 2. Webhook signing secret comes from step 3 below (`whsec_...`).
 3. Put both on the deployed worker (run from the repo, on the branch):
 
@@ -103,6 +109,10 @@ From a personal **Gmail** account AND an **Outlook/Hotmail** account:
    - Severity + category lines, a one-line summary of YOUR problem, three next
      steps, the "reply to this thread and I'll remember where we left off"
      sign-off, and the build-night footer.
+   - **The reply must reference the email BODY (the microwave/wifi detail), not
+     just the subject line.** A subject-only reply means the API key can't read
+     received email (see step 2.1 — use a full-access key) — the fallback path
+     is silent, so this check is the only way to catch it.
    - **Check it landed in the inbox, not spam, on BOTH providers.** If it's in
      spam: confirm SPF/DKIM show verified in Resend, add the DMARC record, and
      send 2–3 more test rounds — fresh domains warm up fast at this volume.
