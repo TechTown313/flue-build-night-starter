@@ -4,10 +4,15 @@ This file exists **only on the `reference-email` branch**. Main is the participa
 kit and stays untouched — no Resend dependency, no channel, no secrets.
 
 What this branch adds: inbound email to **triage@techtowndetroit.dev** hits
-`POST /channels/resend/webhook` (signature-verified), the Triage agent runs one
+`POST /channels/resend/webhook` (signature-verified), which does only the fast
+work — loop guards, fetch the full email, dispatch to the Triage agent with the
+email metadata attached as `initialData` — and returns. The agent runs one
 conversation **per sender** (conversation id = short SHA-256 hash of the sender
-address — the raw address is never used as an id), and the reply goes back out
-via the Resend SDK with `In-Reply-To`/`References` so it threads. Replying to
+address — the raw address is never used as an id), and the agent itself sends
+the reply from its `useAgentFinish` hook (inside its durable execution) via the
+Resend SDK with `In-Reply-To`/`References` so it threads. The webhook never
+waits for the agent: Cloudflare kills webhook background work after 30s and a
+triage run takes ~60s — that was the original never-replies bug. Replying to
 the thread at ~8:05 lands in the SAME conversation — memory proven at room
 scale, hours apart.
 
@@ -116,13 +121,20 @@ From a personal **Gmail** account AND an **Outlook/Hotmail** account:
    - **Check it landed in the inbox, not spam, on BOTH providers.** If it's in
      spam: confirm SPF/DKIM show verified in Resend, add the DMARC record, and
      send 2–3 more test rounds — fresh domains warm up fast at this volume.
-3. Reply to the thread: "what did I report earlier?" — the answer must
-   reference the microwave/wifi report. That's the 8:05 callback, proven.
+3. Reply to the thread: "what did I report earlier?" — the reply is a recap of
+   the latest action plan on file, and it must reference the microwave/wifi
+   report. (Email replies carry the structured plan, not the model's free-text
+   answer — the finish hook cannot read the response text, only durable state.)
+   That's the 8:05 callback, proven.
 4. Send from a SECOND address at the same provider — confirm it gets its OWN
    memory (different sender hash = different conversation).
 5. Failure path: temporarily set a bogus `RESEND_API_KEY`? No — don't break
-   sending. Instead check `wrangler tail` while testing; any agent failure
-   should produce the friendly "hit a snag" reply, never silence.
+   sending. Instead check `wrangler tail` while testing. Honest limitation of
+   the finish-hook design: if the agent settles but never submitted a plan, the
+   reporter gets a "received, but the agent returned no plan" email; if the
+   agent RUN itself fails (model error, timeout), no hook fires and **no email
+   goes out at all** — the tail is the only place that failure is visible, so
+   keep it open during the demo.
 6. `npx wrangler tail` during all of this is your live debugger.
 
 ## 5. Budget honesty (verify again the week of)

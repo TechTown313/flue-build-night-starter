@@ -1,6 +1,18 @@
 'use agent';
-import { defineTool, useDataWriter, useModel, usePersistentState, useSubagent, useTool } from '@flue/runtime';
-import { ActionPlanSchema } from './schema.ts';
+import {
+  defineTool,
+  useAgentFinish,
+  useAgentStart,
+  useDataWriter,
+  useInitialData,
+  useModel,
+  usePersistentState,
+  useSubagent,
+  useTool,
+} from '@flue/runtime';
+import * as v from 'valibot';
+import { EmailMetaSchema, type EmailMeta, formatReply, sendReply } from './email-reply.ts';
+import { ActionPlanSchema, type ActionPlan } from './schema.ts';
 import { Scribe } from './subagents/scribe.ts';
 import { lookupIncident } from './tools/lookup-incident.ts';
 
@@ -23,6 +35,10 @@ export function Triage() {
   // data.actionPlan — validated JSON, not prose.
   const writePlan = useDataWriter('actionPlan', { schema: ActionPlanSchema });
 
+  // Durable copy of the newest plan — the email-reply hook below reads it
+  // (data-writer parts are write-only; nothing is ever read back from them).
+  const [lastPlan, setLastPlan] = usePersistentState<ActionPlan | null>('lastPlan', null);
+
   const submitActionPlan = defineTool({
     name: 'submit_action_plan',
     description:
@@ -31,11 +47,66 @@ export function Triage() {
     async run({ data }) {
       writePlan(data);
       setTriageCount((previous) => previous + 1);
+      setLastPlan(data); // durable copy for the email-reply hook below
       return 'Action plan recorded.';
     },
   });
   useTool(submitActionPlan);
   useTool(lookupIncident);
+
+  // EMAIL REPLY (branch `reference-email`) — when the Resend channel created
+  // this conversation, `initialData` carries the email metadata; ordinary
+  // HTTP/chat conversations carry none, and this whole block is a no-op.
+  // The reply is sent from useAgentFinish — the framework's end-of-run seam
+  // (async callbacks, awaited before the response settles) — inside the
+  // agent's durable execution, where the Workers 30s waitUntil cap on the
+  // webhook does not apply.
+  // The finish seam exposes only tool calls + usage — never the response's
+  // final text or useDataWriter parts — so the email is formatted from the
+  // durable `lastPlan` copy submit_action_plan recorded above.
+  const email = useInitialData<EmailMeta | undefined>();
+  // Docs: "guard anything that must not happen twice (an outbound email, a
+  // page) with persistent state" — one reply per inbound email, tops.
+  const [emailsSeen, setEmailsSeen] = usePersistentState('emailsSeen', 0);
+  const [emailRepliesSent, setEmailRepliesSent] = usePersistentState('emailRepliesSent', 0);
+  useAgentStart(() => {
+    if (email) setEmailsSeen((previous) => previous + 1);
+  });
+  useAgentFinish(async ({ response, log }) => {
+    if (!email) {
+      // Non-email conversation (HTTP/chat): nothing to send. The log line is
+      // the observable proof the hook ran without touching Resend.
+      console.log('triage finish hook: non-email conversation, no email reply attempted');
+      return;
+    }
+    if (emailRepliesSent >= emailsSeen) return; // already replied to every email seen
+    // Fresh plan this response? (toolCalls spans the whole response, durably.)
+    const submittedNow = response.toolCalls.some(
+      (call) => call.tool === 'submit_action_plan' && !call.isError,
+    );
+    const body =
+      submittedNow && lastPlan
+        ? formatReply(lastPlan, '')
+        : lastPlan
+          ? formatReply(
+              lastPlan,
+              '(Recap of the latest action plan on file for this thread — reply with any new details and I will re-triage.)',
+            )
+          : formatReply(null, '');
+    await sendReply({
+      to: email.sender,
+      subject: email.subject,
+      body,
+      inReplyTo: email.messageId,
+      references: email.references,
+    });
+    setEmailRepliesSent(emailsSeen);
+    log.info('triage finish hook: email reply sent', { to: email.sender });
+    // Honest limitation: finish hooks run only when a response settles. If
+    // the submission itself FAILS (model error, durability timeout), no hook
+    // runs and no email is sent — the old "hit a snag" fallback email has no
+    // seam to run from in this design. Failures are visible in wrangler tail.
+  });
 
   // TEAMMATE — a subagent the model can hand one job to via the framework's
   // built-in `task` tool. The MODEL decides when to delegate; only the scribe's
@@ -81,3 +152,7 @@ Then reply with one or two friendly sentences — the severity you chose and the
 // Pin the agent's durable identity so renaming the function later never loses
 // stored conversations.
 Triage.agentName = 'Triage';
+
+// Validate email metadata at conversation creation. `v.optional` keeps plain
+// HTTP/chat conversations (no initialData at all) working unchanged.
+Triage.initialData = v.optional(EmailMetaSchema);

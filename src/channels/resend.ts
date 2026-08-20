@@ -3,26 +3,26 @@
 // REFERENCE-ONLY (branch `reference-email`) — the email ingress for the
 // "Build It. Break It. Bring It Back" cold open. Inbound mail to
 // triage@techtowndetroit.dev arrives here as a verified `email.received`
-// webhook; the Triage agent answers; the reply goes back out through the
-// Resend SDK. The participant kit (main branch) does not contain this file.
+// webhook; the Triage agent answers; the agent itself emails the action plan
+// back (see the useAgentFinish hook in ../agents/triage/agent.ts). The
+// participant kit (main branch) does not contain this file.
 //
 // Flow: verified webhook -> fetch full email -> conversation id derived from
 // a SHA-256 hash of the sender address (never the raw address) -> dispatch to
-// the Triage agent -> await settlement -> email the action plan back.
+// the Triage agent with the email metadata as `initialData` -> return 200.
+// The webhook does ONLY the fast work. It never awaits the agent run:
+// Cloudflare kills waitUntil work 30s after the response, and a triage run
+// takes ~60s — the reply is sent from the agent's own durable execution,
+// which has no such cap.
 import { createResendChannel } from '@flue/resend';
 import { init } from '@flue/runtime';
-import { Resend, type EmailReceivedEvent, type GetReceivingEmailResponseSuccess } from 'resend';
-import type { ActionPlan } from '../agents/triage/schema.ts';
+import { type EmailReceivedEvent, type GetReceivingEmailResponseSuccess } from 'resend';
+import { client } from '../agents/triage/email-reply.ts';
 import { Triage } from '../agents/triage/agent.ts';
 
-const FROM = 'Triage Agent <triage@techtowndetroit.dev>';
 const OUR_ADDRESS = 'triage@techtowndetroit.dev';
-const SIGN_OFF = "Reply to this thread and I'll remember where we left off.";
-const FOOTER = 'built with Flue on Cloudflare Workers — TechTown Advanced Build Night';
 // Keep one runaway pasted log from blowing the model's context.
 const MAX_BODY_CHARS = 6000;
-
-export const client = new Resend(process.env.RESEND_API_KEY!);
 
 export const channel = createResendChannel({
   client,
@@ -37,9 +37,10 @@ export const channel = createResendChannel({
     });
 
     // Acknowledge with 200 immediately (Resend retries anything else) and
-    // finish the triage + reply in the background. workerd needs waitUntil to
-    // keep the work alive past the response; the Node dev server has no
-    // execution context, where the floating promise simply runs to completion.
+    // finish the fetch + dispatch in the background — seconds of work, well
+    // inside the 30s waitUntil window. workerd needs waitUntil to keep the
+    // work alive past the response; the Node dev server has no execution
+    // context, where the floating promise simply runs to completion.
     try {
       c.executionCtx.waitUntil(work);
     } catch {
@@ -87,110 +88,30 @@ async function handleInboundEmail(
   // lowercased address. Same person, same memory — including hours later.
   const conversationId = await conversationIdFor(sender);
 
-  let replyBody: string;
-  try {
-    const agent = init(Triage, { id: conversationId });
-    const receipt = await agent.dispatch({
-      message: {
-        kind: 'user',
-        body: subject
-          ? `Email report — subject: ${subject}\n\n${bodyText || '(no body — triage the subject line)'}`
-          : bodyText || '(empty email)',
-      },
-      // Resend delivers at-least-once; svix delivery id keys the dispatch so a
-      // redelivered webhook converges on the original submission.
-      idempotencyKey: deliveryId,
-    });
-    const reply = await agent.read(receipt);
-    replyBody = formatReply(latestPlan(reply.data), reply.text);
-  } catch (error) {
-    console.error('resend channel: agent run failed', error);
-    replyBody = [
-      'The triage agent hit a snag processing your report — it happens to the best of us.',
-      'Your email arrived safely; try sending it again in a minute, or flag a facilitator.',
-      '',
-      SIGN_OFF,
-      '',
-      '--',
-      FOOTER,
-    ].join('\n');
-  }
-
-  await sendReply({
-    to: sender,
-    subject,
-    body: replyBody,
-    inReplyTo: full?.message_id ?? envelope.message_id,
-    references: headerValue(full?.headers, 'references'),
+  // Dispatch and return: resolves as soon as the message is durably admitted;
+  // the agent runs on its own and emails the reply from its finish hook.
+  const agent = init(Triage, { id: conversationId });
+  await agent.dispatch({
+    message: {
+      kind: 'user',
+      body: subject
+        ? `Email report — subject: ${subject}\n\n${bodyText || '(no body — triage the subject line)'}`
+        : bodyText || '(empty email)',
+    },
+    // What this conversation IS: an email thread with this sender. Recorded
+    // once at creation (later emails' metadata is ignored by design — replies
+    // to follow-ups thread back to the original message, same thread).
+    initialData: {
+      channel: 'email',
+      sender,
+      subject,
+      messageId: full?.message_id ?? envelope.message_id,
+      references: headerValue(full?.headers, 'references'),
+    },
+    // Resend delivers at-least-once; svix delivery id keys the dispatch so a
+    // redelivered webhook converges on the original submission.
+    idempotencyKey: deliveryId,
   });
-}
-
-// ---- reply assembly ----
-
-function latestPlan(data: Record<string, unknown[]>): ActionPlan | null {
-  const plans = data['actionPlan'];
-  if (!Array.isArray(plans) || plans.length === 0) return null;
-  const plan = plans[plans.length - 1];
-  if (
-    plan !== null &&
-    typeof plan === 'object' &&
-    typeof (plan as ActionPlan).severity === 'string' &&
-    typeof (plan as ActionPlan).summary === 'string'
-  ) {
-    return plan as ActionPlan;
-  }
-  return null;
-}
-
-function formatReply(plan: ActionPlan | null, agentText: string): string {
-  const lines: string[] = [];
-  if (plan) {
-    lines.push(`Severity: ${plan.severity.toUpperCase()}`);
-    if (plan.category) lines.push(`Category: ${plan.category}`);
-    lines.push('', plan.summary);
-    const steps = Array.isArray(plan.nextSteps) ? plan.nextSteps : [];
-    if (steps.length > 0) {
-      lines.push('', 'Next steps:');
-      steps.forEach((step, index) => lines.push(`  ${index + 1}. ${step}`));
-    }
-  }
-  const text = agentText.trim();
-  if (text) lines.push('', text);
-  if (lines.length === 0) lines.push('Your report was received, but the agent returned no plan.');
-  lines.push('', SIGN_OFF, '', '--', FOOTER);
-  return lines.join('\n');
-}
-
-async function sendReply(options: {
-  to: string;
-  subject: string;
-  body: string;
-  inReplyTo: string | undefined;
-  references: string | undefined;
-}): Promise<void> {
-  // RFC 3834: mark our replies as automated so well-behaved auto-responders
-  // (out-of-office, vacation) stay silent instead of looping with us.
-  const headers: Record<string, string> = { 'Auto-Submitted': 'auto-replied' };
-  const messageId = normalizeMessageId(options.inReplyTo);
-  if (messageId) {
-    headers['In-Reply-To'] = messageId;
-    headers['References'] = options.references ? `${options.references} ${messageId}` : messageId;
-  }
-  const result = await client.emails.send({
-    from: FROM,
-    to: options.to,
-    subject: replySubject(options.subject),
-    text: options.body,
-    headers,
-  });
-  if (result.error) {
-    console.error('resend channel: reply send failed', result.error.message);
-  }
-}
-
-function replySubject(subject: string): string {
-  if (!subject) return 'Re: your incident report';
-  return /^re:/i.test(subject) ? subject : `Re: ${subject}`;
 }
 
 // ---- small helpers ----
@@ -225,13 +146,6 @@ export async function conversationIdFor(senderAddress: string): Promise<string> 
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
   return `email-${hex.slice(0, 16)}`;
-}
-
-/** RFC message ids belong in angle brackets. */
-function normalizeMessageId(id: string | undefined): string | undefined {
-  const trimmed = id?.trim();
-  if (!trimmed) return undefined;
-  return trimmed.startsWith('<') ? trimmed : `<${trimmed}>`;
 }
 
 function headerValue(
