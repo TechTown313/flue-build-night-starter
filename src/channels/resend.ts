@@ -22,44 +22,11 @@ const FOOTER = 'built with Flue on Cloudflare Workers — TechTown Advanced Buil
 // Keep one runaway pasted log from blowing the model's context.
 const MAX_BODY_CHARS = 6000;
 
-// Lazy client: constructing Resend without a key THROWS, and module scope
-// runs during deploy validation — before `wrangler secret put` has ever run.
-// The proxy defers construction to first actual use (a request, where the
-// secret is present), so the worker deploys cleanly with no secrets set.
-let _client: Resend | undefined;
-function getClient(): Resend {
-  if (!_client) {
-    if (!process.env.RESEND_API_KEY) {
-      throw new Error('RESEND_API_KEY is not set — run `npx wrangler secret put RESEND_API_KEY` (see FACILITATOR-EMAIL.md §2).');
-    }
-    _client = new Resend(process.env.RESEND_API_KEY);
-  }
-  return _client;
-}
-export const client = new Proxy({} as Resend, {
-  get(_target, prop) {
-    // createResendChannel() probes `client.webhooks.verify` at module scope
-    // (i.e., during deploy validation, before secrets exist). Answer the
-    // probe with a deferring wrapper instead of constructing the client.
-    if (prop === 'webhooks' && !_client) {
-      return {
-        verify: (...args: unknown[]) =>
-          (getClient().webhooks as unknown as { verify: (...a: unknown[]) => unknown }).verify(...args),
-      };
-    }
-    return (getClient() as unknown as Record<PropertyKey, unknown>)[prop];
-  },
-});
-
-// Same deploy-before-secrets problem: a syntactically valid placeholder keeps
-// channel creation from throwing; until the real secret is set, webhook
-// signature verification simply rejects everything with 400 (which is correct
-// — nothing should be accepted before setup finishes).
-const WEBHOOK_SECRET_PLACEHOLDER = 'whsec_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+export const client = new Resend(process.env.RESEND_API_KEY!);
 
 export const channel = createResendChannel({
   client,
-  webhookSecret: process.env.RESEND_WEBHOOK_SECRET ?? WEBHOOK_SECRET_PLACEHOLDER,
+  webhookSecret: process.env.RESEND_WEBHOOK_SECRET!,
 
   // Path: /channels/resend/webhook
   async webhook({ c, event, delivery }) {
