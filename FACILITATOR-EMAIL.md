@@ -23,11 +23,21 @@ inside the agent's own durable execution via the Resend SDK with
   structured plan block is appended automatically; on follow-up questions the
   email is pure prose. This is why email replies now read like the agent's real
   HTTP conversation instead of a canned recap — "that's not an autoresponder."
-- **Fallback — the `useAgentFinish` hook.** The finish seam cannot read the
-  model's final text (only `response.toolCalls`), so if a run with email
-  metadata settles WITHOUT a completed `send_reply` call, the hook sends the
-  old recap-style email formatted from the durable `lastPlan`. Persistent-state
-  guards are shared across both paths: one reply per inbound email, never two.
+- **Self-heal, then fallback — the `useAgentFinish` hook.** The finish seam
+  cannot read the model's final text (only `response.toolCalls`), so when the
+  model writes a perfectly good answer as plain text and skips `send_reply`
+  (observed live with glm-4.7-flash), the hook first `ctx.append`s a corrective
+  signal — the framework runs another model turn in the same response telling
+  it to deliver that reply via `send_reply`, and the hook re-fires at the next
+  would-stop. Capped at 2 nudges per inbound email (durable ledger keyed on the
+  emailsSeen ordinal); only past the cap does the old recap-style email
+  formatted from the durable `lastPlan` go out. Observable in `wrangler tail`,
+  one line per path: `reply delivered via send_reply tool` (happy/nudged),
+  `nudge 1/2` / `nudge 2/2 — model finished without send_reply, appending
+  corrective signal`, `fallback recap email sent (model skipped send_reply
+  through 2 nudges)`, and `non-email conversation, no email reply attempted`
+  (HTTP/chat runs). Persistent-state guards are shared across all paths: one
+  reply per inbound email, never two.
 
 The webhook never waits for the agent: Cloudflare kills webhook background work
 after 30s and a triage run takes ~60s — that was the original never-replies
@@ -147,17 +157,21 @@ From a personal **Gmail** account AND an **Outlook/Hotmail** account:
    should talk about the microwave/wifi problem and where the plan left off),
    with NO severity/category/next-steps block — the plan block rides along only
    on fresh triages. Also try "what does this mean? I'm confused." — same bar:
-   a real explanation, not a recap. If you instead get the plan block with a
-   "(Recap of the latest action plan on file...)" line, the model skipped its
-   `send_reply` tool and the finish-hook fallback fired — check `wrangler tail`
-   for `fallback recap email sent`. That's the 8:05 callback, proven.
+   a real explanation, not a recap. If the model skips its `send_reply` tool,
+   the finish hook now nudges it (watch `wrangler tail` for `nudge 1/2` /
+   `nudge 2/2`) and the conversational reply should still arrive, followed by
+   `reply delivered via send_reply tool`. Only if you get the plan block with a
+   "(Recap of the latest action plan on file...)" line did the model resist
+   both nudges — the tail shows `fallback recap email sent (model skipped
+   send_reply through 2 nudges)`. That's the 8:05 callback, proven.
 4. Send from a SECOND address at the same provider — confirm it gets its OWN
    memory (different sender hash = different conversation).
 5. Failure path: temporarily set a bogus `RESEND_API_KEY`? No — don't break
    sending. Instead check `wrangler tail` while testing. Honest limitations:
-   if the model finishes without calling `send_reply`, the finish-hook fallback
-   sends the recap-style email (or "received, but the agent returned no plan"
-   when no plan exists) — visible in the tail as `fallback recap email sent`;
+   if the model finishes without calling `send_reply` even after both nudges,
+   the finish-hook fallback sends the recap-style email (or "received, but the
+   agent returned no plan" when no plan exists) — visible in the tail as
+   `fallback recap email sent (model skipped send_reply through 2 nudges)`;
    if the agent RUN itself fails (model error, timeout), no tool runs, no hook
    fires, and **no email goes out at all** — the tail is the only place that
    failure is visible, so keep it open during the demo.

@@ -65,6 +65,14 @@ export function Triage() {
   // wrote); reads inside run() use readNow() below so same-run writes are
   // seen at call time, not at render time.
   const [, setPlanSubmittedAtEmail] = usePersistentState('planSubmittedAtEmail', 0);
+  // NUDGE LEDGER for the finish hook's self-heal path below: how many
+  // corrective signals have been appended for the CURRENT inbound email,
+  // keyed by the emailsSeen ordinal (same machinery as the run-scoped flag
+  // above). Durable on purpose — finish-hook cycles are response-control
+  // checkpoints and a resumed response must not restart the count. A new
+  // inbound email bumps emailsSeen, which makes the stored ordinal stale and
+  // implicitly resets the count to zero.
+  const [, setNudgesAtEmail] = usePersistentState('nudgesAtEmail', { email: 0, count: 0 });
   useAgentStart(() => {
     if (email) setEmailsSeen((previous) => previous + 1);
   });
@@ -128,33 +136,68 @@ export function Triage() {
     });
   }
 
-  // EMAIL REPLY, fallback path — useAgentFinish is the framework's
+  // EMAIL REPLY, enforcement + fallback — useAgentFinish is the framework's
   // end-of-run enforcement seam (async callbacks, awaited before the
   // response settles, inside the agent's durable execution where the Workers
   // 30s waitUntil cap does not apply). The finish context exposes only
-  // `response.toolCalls` + usage — never the model's final text — so this
-  // path can only send the recap-style email formatted from the durable
-  // `lastPlan`. That makes it strictly a FALLBACK: it sends only when this
-  // run had email metadata AND the model never completed a send_reply call.
-  useAgentFinish(async ({ response, log }) => {
+  // `response.toolCalls` + usage — never the model's final text — so when the
+  // model writes its answer as plain assistant text and skips send_reply, the
+  // good answer is unreachable from here. The framework's own remedy (docs:
+  // useAgentFinish is "the enforcement seam ... if the work is not done,
+  // `ctx.append` a signal to send the model back to work within the same
+  // response"; the model reads the appended signal on a continuation turn and
+  // this hook fires again at the next would-stop) is the SELF-HEALING NUDGE
+  // below: tell the model its text never reached the reporter and to call
+  // send_reply now. Capped at 2 nudges per inbound email (well under the
+  // framework's 32-cycle continuation ceiling); past the cap, the old
+  // recap-style email formatted from the durable `lastPlan` goes out as the
+  // last-resort fallback.
+  useAgentFinish(async ({ response, append, log }) => {
     if (!email) {
-      // Non-email conversation (HTTP/chat): nothing to send. The log line is
-      // the observable proof the hook ran without touching Resend.
+      // Non-email conversation (HTTP/chat): nothing to send, nothing to
+      // nudge. The log line is the observable proof the hook ran without
+      // touching Resend or appending a continuation.
       console.log('triage finish hook: non-email conversation, no email reply attempted');
       return;
     }
     // Primary path already replied? (toolCalls spans the whole response,
-    // durably, across re-attempts.)
+    // durably, across re-attempts AND across nudge continuation turns — a
+    // nudged send_reply lands here on the hook's next firing.)
     const sentViaTool = response.toolCalls.some(
       (call) => call.tool === 'send_reply' && !call.isError,
     );
-    if (sentViaTool) return;
-    // Persistent-state double-send guard, coherent across BOTH paths: the
-    // send_reply tool records emailRepliesSent too, so a run never sends two
-    // emails — and one reply per inbound email, tops.
+    if (sentViaTool) {
+      console.log('triage finish hook: reply delivered via send_reply tool');
+      return;
+    }
+    // Persistent-state double-send guard, coherent across ALL paths (tool,
+    // nudged tool, recap): the send_reply tool records emailRepliesSent too,
+    // so a run never sends two emails — one reply per inbound email, tops.
     const seen = readNow(setEmailsSeen);
     if (readNow(setEmailRepliesSent) >= seen) return;
-    // Fresh plan this response? (Same durable toolCalls inspection.)
+    // SELF-HEALING NUDGE — the model finished with plain text (its reply is
+    // trapped in the transcript). Append a corrective signal so the model
+    // continues within this same response and delivers that reply through
+    // send_reply. The nudge ledger caps this at 2 per inbound email so a
+    // stubborn model cannot loop; the append itself is what makes the model
+    // run another turn, after which this hook re-evaluates from the top.
+    const nudges = readNow(setNudgesAtEmail);
+    const count = nudges.email === seen ? nudges.count : 0;
+    if (count < 2) {
+      setNudgesAtEmail({ email: seen, count: count + 1 });
+      console.log(
+        `triage finish hook: nudge ${count + 1}/2 — model finished without send_reply, appending corrective signal`,
+      );
+      append({
+        kind: 'signal',
+        type: 'reminder',
+        body: 'Your reply was NOT delivered — the reporter only receives what you pass to the send_reply tool. Call send_reply now, with the complete reply you just composed as its body.',
+      });
+      return; // continuation turn runs; this hook fires again at the next would-stop
+    }
+    // NUDGE CAP REACHED — last-resort recap fallback, exactly the old
+    // behavior: the reporter gets the structured plan on file rather than
+    // silence. Fresh plan this response? (Same durable toolCalls inspection.)
     const submittedNow = response.toolCalls.some(
       (call) => call.tool === 'submit_action_plan' && !call.isError,
     );
@@ -177,7 +220,7 @@ export function Triage() {
     });
     if (result.error) return; // logged inside sendReply; visible in wrangler tail
     setEmailRepliesSent(seen);
-    log.info('triage finish hook: fallback recap email sent (model skipped send_reply)', {
+    log.info('triage finish hook: fallback recap email sent (model skipped send_reply through 2 nudges)', {
       to: email.sender,
     });
     // Honest limitation: finish hooks run only when a response settles. If
@@ -232,7 +275,9 @@ EMAIL MODE — this conversation IS an email thread with ${email.sender}. Your c
 - Write it TO the reporter, conversationally and helpfully: answer their actual question in plain prose, and refer back to what they reported earlier in this thread naturally (for example "the login outage you emailed about this morning"). Never send boilerplate or a canned recap.
 - Never put a severity/category/next-steps block in the body — after a fresh triage the structured plan is appended to the email automatically. Your prose adds what the block cannot: what it means, what you decided, what happens next.
 - For a follow-up question ("what does this mean?", "what did I ask about earlier?"), do not re-triage and do not call submit_action_plan — answer from this conversation's history in your own words, then call send_reply with that answer.
-- On a fresh triage, put the scribe's STAKEHOLDER UPDATE at the end of your send_reply body.`
+- On a fresh triage, put the scribe's STAKEHOLDER UPDATE at the end of your send_reply body.
+
+FINAL RULE — NO EXCEPTIONS: never finish a turn with plain text. Anything you write outside the send_reply tool is discarded unseen; send_reply is the ONLY delivery channel to the reporter, and your ENTIRE user-facing reply must be its body argument. The last action of every turn is a send_reply call.`
       : ''
   }`;
 }
