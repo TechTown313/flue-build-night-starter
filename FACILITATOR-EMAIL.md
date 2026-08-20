@@ -8,13 +8,31 @@ What this branch adds: inbound email to **triage@techtowndetroit.dev** hits
 work — loop guards, fetch the full email, dispatch to the Triage agent with the
 email metadata attached as `initialData` — and returns. The agent runs one
 conversation **per sender** (conversation id = short SHA-256 hash of the sender
-address — the raw address is never used as an id), and the agent itself sends
-the reply from its `useAgentFinish` hook (inside its durable execution) via the
-Resend SDK with `In-Reply-To`/`References` so it threads. The webhook never
-waits for the agent: Cloudflare kills webhook background work after 30s and a
-triage run takes ~60s — that was the original never-replies bug. Replying to
-the thread at ~8:05 lands in the SAME conversation — memory proven at room
-scale, hours apart.
+address — the raw address is never used as an id). The reply goes out from
+inside the agent's own durable execution via the Resend SDK with
+`In-Reply-To`/`References` so it threads, through TWO paths:
+
+- **Primary — the `send_reply` tool.** Email conversations (and only email
+  conversations — the tool is registered conditionally on the email metadata,
+  so HTTP/chat conversations never see it) get a typed tool whose ONLY
+  model-selected argument is `body`: the model's actual conversational message
+  to the sender. Recipient, subject, threading, `Auto-Submitted`, sign-off, and
+  footer are bound by the tool itself, per the Resend channel docs' rule that
+  outbound reply tools bind identity and recipients outside model arguments.
+  When `submit_action_plan` fired earlier in the same run (a fresh triage), the
+  structured plan block is appended automatically; on follow-up questions the
+  email is pure prose. This is why email replies now read like the agent's real
+  HTTP conversation instead of a canned recap — "that's not an autoresponder."
+- **Fallback — the `useAgentFinish` hook.** The finish seam cannot read the
+  model's final text (only `response.toolCalls`), so if a run with email
+  metadata settles WITHOUT a completed `send_reply` call, the hook sends the
+  old recap-style email formatted from the durable `lastPlan`. Persistent-state
+  guards are shared across both paths: one reply per inbound email, never two.
+
+The webhook never waits for the agent: Cloudflare kills webhook background work
+after 30s and a triage run takes ~60s — that was the original never-replies
+bug. Replying to the thread at ~8:05 lands in the SAME conversation — memory
+proven at room scale, hours apart.
 
 ---
 
@@ -111,9 +129,12 @@ From a personal **Gmail** account AND an **Outlook/Hotmail** account:
    problem: "The wifi in the back room drops every time the microwave runs."
 2. Within ~a minute you should receive a reply from
    `Triage Agent <triage@techtowndetroit.dev>`:
-   - Severity + category lines, a one-line summary of YOUR problem, three next
-     steps, the "reply to this thread and I'll remember where we left off"
-     sign-off, and the build-night footer.
+   - A conversational note from the model FIRST (what it made of your report,
+     what it decided, what happens next), then the structured plan block —
+     severity + category lines, a one-line summary of YOUR problem, three next
+     steps — then the "reply to this thread and I'll remember where we left
+     off" sign-off and the build-night footer. The plan block appears **only on
+     a fresh triage** (a run where `submit_action_plan` fired).
    - **The reply must reference the email BODY (the microwave/wifi detail), not
      just the subject line.** A subject-only reply means the API key can't read
      received email (see step 2.1 — use a full-access key) — the fallback path
@@ -121,20 +142,25 @@ From a personal **Gmail** account AND an **Outlook/Hotmail** account:
    - **Check it landed in the inbox, not spam, on BOTH providers.** If it's in
      spam: confirm SPF/DKIM show verified in Resend, add the DMARC record, and
      send 2–3 more test rounds — fresh domains warm up fast at this volume.
-3. Reply to the thread: "what did I report earlier?" — the reply is a recap of
-   the latest action plan on file, and it must reference the microwave/wifi
-   report. (Email replies carry the structured plan, not the model's free-text
-   answer — the finish hook cannot read the response text, only durable state.)
-   That's the 8:05 callback, proven.
+3. Reply to the thread: "what did I report earlier?" — the reply must be a
+   **conversational answer in prose, grounded in YOUR earlier report** (it
+   should talk about the microwave/wifi problem and where the plan left off),
+   with NO severity/category/next-steps block — the plan block rides along only
+   on fresh triages. Also try "what does this mean? I'm confused." — same bar:
+   a real explanation, not a recap. If you instead get the plan block with a
+   "(Recap of the latest action plan on file...)" line, the model skipped its
+   `send_reply` tool and the finish-hook fallback fired — check `wrangler tail`
+   for `fallback recap email sent`. That's the 8:05 callback, proven.
 4. Send from a SECOND address at the same provider — confirm it gets its OWN
    memory (different sender hash = different conversation).
 5. Failure path: temporarily set a bogus `RESEND_API_KEY`? No — don't break
-   sending. Instead check `wrangler tail` while testing. Honest limitation of
-   the finish-hook design: if the agent settles but never submitted a plan, the
-   reporter gets a "received, but the agent returned no plan" email; if the
-   agent RUN itself fails (model error, timeout), no hook fires and **no email
-   goes out at all** — the tail is the only place that failure is visible, so
-   keep it open during the demo.
+   sending. Instead check `wrangler tail` while testing. Honest limitations:
+   if the model finishes without calling `send_reply`, the finish-hook fallback
+   sends the recap-style email (or "received, but the agent returned no plan"
+   when no plan exists) — visible in the tail as `fallback recap email sent`;
+   if the agent RUN itself fails (model error, timeout), no tool runs, no hook
+   fires, and **no email goes out at all** — the tail is the only place that
+   failure is visible, so keep it open during the demo.
 6. `npx wrangler tail` during all of this is your live debugger.
 
 ## 5. Budget honesty (verify again the week of)

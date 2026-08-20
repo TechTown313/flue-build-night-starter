@@ -34,21 +34,48 @@ export const EmailMetaSchema = v.object({
 });
 export type EmailMeta = v.InferOutput<typeof EmailMetaSchema>;
 
-export function formatReply(plan: ActionPlan | null, agentText: string): string {
-  const lines: string[] = [];
-  if (plan) {
-    lines.push(`Severity: ${plan.severity.toUpperCase()}`);
-    if (plan.category) lines.push(`Category: ${plan.category}`);
-    lines.push('', plan.summary);
-    const steps = Array.isArray(plan.nextSteps) ? plan.nextSteps : [];
-    if (steps.length > 0) {
-      lines.push('', 'Next steps:');
-      steps.forEach((step, index) => lines.push(`  ${index + 1}. ${step}`));
-    }
+/** The structured plan rendered as a plain-text block, or [] when no plan. */
+function planBlock(plan: ActionPlan | null): string[] {
+  if (!plan) return [];
+  const lines = [`Severity: ${plan.severity.toUpperCase()}`];
+  if (plan.category) lines.push(`Category: ${plan.category}`);
+  lines.push('', plan.summary);
+  const steps = Array.isArray(plan.nextSteps) ? plan.nextSteps : [];
+  if (steps.length > 0) {
+    lines.push('', 'Next steps:');
+    steps.forEach((step, index) => lines.push(`  ${index + 1}. ${step}`));
   }
+  return lines;
+}
+
+/**
+ * FALLBACK format (finish-hook recap path): plan block first, optional note
+ * after — the shape the original hook-only design always sent.
+ */
+export function formatReply(plan: ActionPlan | null, agentText: string): string {
+  const lines: string[] = [...planBlock(plan)];
   const text = agentText.trim();
   if (text) lines.push('', text);
   if (lines.length === 0) lines.push('Your report was received, but the agent returned no plan.');
+  lines.push('', SIGN_OFF, '', '--', FOOTER);
+  return lines.join('\n');
+}
+
+/**
+ * PRIMARY format (send_reply tool path): the model's conversational message
+ * to the sender comes FIRST; the structured plan block is appended only when
+ * a plan was submitted in this same run (fresh triage), never on follow-ups.
+ */
+export function formatAgentReply(agentText: string, plan: ActionPlan | null): string {
+  const lines: string[] = [];
+  const text = agentText.trim();
+  if (text) lines.push(text);
+  const block = planBlock(plan);
+  if (block.length > 0) {
+    if (lines.length > 0) lines.push('');
+    lines.push(...block);
+  }
+  if (lines.length === 0) lines.push('Your report was received.');
   lines.push('', SIGN_OFF, '', '--', FOOTER);
   return lines.join('\n');
 }
@@ -59,7 +86,7 @@ export async function sendReply(options: {
   body: string;
   inReplyTo: string | undefined;
   references: string | undefined;
-}): Promise<void> {
+}): Promise<{ error?: string }> {
   // RFC 3834: mark our replies as automated so well-behaved auto-responders
   // (out-of-office, vacation) stay silent instead of looping with us.
   const headers: Record<string, string> = { 'Auto-Submitted': 'auto-replied' };
@@ -77,7 +104,9 @@ export async function sendReply(options: {
   });
   if (result.error) {
     console.error('email reply: send failed', result.error.message);
+    return { error: result.error.message };
   }
+  return {};
 }
 
 function replySubject(subject: string): string {
