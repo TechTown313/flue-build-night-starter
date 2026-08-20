@@ -140,12 +140,18 @@ function extractAddress(from: string | undefined): string {
   return (bracketed ? bracketed[1] : from).trim();
 }
 
-/** Stable conversation id: `email-` + first 16 hex chars of SHA-256(lowercased address). */
+/**
+ * Stable conversation id: `email-v2-` + first 16 hex chars of SHA-256(lowercased
+ * address). The `v2` salt matters: initialData only seeds an instance at CREATION,
+ * so conversations born before the finish-hook reply deploy permanently lack
+ * their email metadata and would never reply. Bumping the salt strands those old
+ * instances and gives every sender a fresh, correctly-seeded conversation.
+ */
 export async function conversationIdFor(senderAddress: string): Promise<string> {
   const bytes = new TextEncoder().encode(senderAddress.trim().toLowerCase());
   const digest = await crypto.subtle.digest('SHA-256', bytes);
   const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-  return `email-${hex.slice(0, 16)}`;
+  return `email-v2-${hex.slice(0, 16)}`;
 }
 
 function headerValue(
