@@ -8,7 +8,7 @@ export function Triage() {
   // MODEL — the free-tier-friendly default (your free Cloudflare account gets
   // 10,000 Workers AI neurons per day; a basic triage costs roughly 20, and a
   // delegation turn costs more — check the dashboard usage page for real numbers).
-  useModel('cloudflare/@cf/qwen/qwen3-30b-a3b-fp8');
+  useModel('cloudflare/@cf/zai-org/glm-4.7-flash');
 
   // Structured output stream: the client receives every submitted plan under
   // data.actionPlan — validated JSON, not prose.

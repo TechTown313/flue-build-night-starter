@@ -10,8 +10,8 @@ export function Triage() {
   // delegation turn costs more — check the dashboard usage page for real numbers).
   // Optional upgrade — better answers, several times the neuron cost; swap back
   // if you see a neuron-limit error:
-  //   useModel('cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast');
-  useModel('cloudflare/@cf/qwen/qwen3-30b-a3b-fp8');
+  //   useModel('cloudflare/@cf/nvidia/nemotron-3-120b-a12b');
+  useModel('cloudflare/@cf/zai-org/glm-4.7-flash');
 
   // Durable per-conversation state: survives server restarts because it lives in
   // the agent's Durable Object (its private saved-game file).
