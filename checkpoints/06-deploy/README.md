@@ -47,6 +47,9 @@ your free account's 10,000 daily Neurons — and the GET returns the same
 conversation JSON you've been reading all night, action plan and STAKEHOLDER
 UPDATE included.
 
+Then open your live URL in a browser and hand a neighbor your phone — the same
+page you used locally, now on the public internet. This is your demo.
+
 Didn't get this far? A clean `npx vite build` exit is "deploy-ready" — take the
 deploy card home and finish it later.
 

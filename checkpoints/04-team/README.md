@@ -113,6 +113,10 @@ same order.
 
 ## Did it work?
 
+You can also watch the delegation from the browser page — open
+[http://localhost:5173](http://localhost:5173), send `Triage INC-1003`, and the
+reply card fills in ending with the STAKEHOLDER UPDATE.
+
 Now the update names the actual service and symptoms in plain English — facts
 the scribe could only have received in the task prompt. The did-it-work test
 needs no code reading: **does the update mention the real service by name?**

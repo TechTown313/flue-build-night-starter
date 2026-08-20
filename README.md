@@ -137,6 +137,15 @@ longest wait of the night — the scribe is a whole second agent session), the a
 reply prints straight to the terminal: a readable triage answer that quotes real
 details from the bundled incident data, ending with the STAKEHOLDER UPDATE.
 
+## See it in a browser
+
+Prefer a page over curl? With the dev server running (`npx vite dev`), open
+[http://localhost:5173](http://localhost:5173). The page talks to the exact same
+`/agents/triage/<id>` routes you've been curling — type an incident, press Send,
+and watch the structured action plan render with a severity badge and numbered
+next steps. It's phone-friendly on purpose: after you deploy, the same page is
+what you hand a neighbor.
+
 ## What's in the box
 
 | Path | What it is |
@@ -225,6 +234,22 @@ It runs on **your** free Cloudflare account: 10,000 free Workers AI neurons per 
 and 100,000 requests per day. A basic triage costs roughly 20 neurons; a delegation
 turn costs more because the scribe is a second model session — either way you have
 hundreds of interactions of headroom for the night. No credit card at any step.
+
+### Reference deploy (facilitators)
+
+Before the event, the facilitator deploys this exact starter — unmodified — to the
+shared TechTown Cloudflare account, so the room has a live reference agent to hit
+from their phones at the 6:00 destination demo (and a safety net if local setups melt):
+
+```bash
+npx wrangler login    # authenticate in the browser against the TechTown account
+npx vite build
+npx wrangler deploy
+```
+
+The deploy output prints the public URL (`https://triage-agent.<techtown-subdomain>.workers.dev`).
+Open it once in a browser to confirm the page loads, send one `Triage INC-1003`
+to confirm a full round trip, and put that URL on the destination-demo slide.
 
 ## No API keys, no secrets
 
