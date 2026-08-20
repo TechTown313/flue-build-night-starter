@@ -12,16 +12,23 @@
     "catchup": "node scripts/catchup.mjs"
   },
   "dependencies": {
+    "@flue/resend": "^2.0.3",
     "@flue/runtime": "^2.0.3",
     "hono": "^4.13.2",
+    "resend": "^6.20.0",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.52.1",
     "@flue/cli": "^2.0.3",
     "@flue/vite": "^2.0.3",
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
     "typescript": "^5.9.3",
     "vite": "^8.2.1",
     "wrangler": "^4.123.0"
+  },
+  "overrides": {
+    "hono": "$hono"
   }
 }

@@ -1,6 +1,7 @@
 import { createAgentRouter } from '@flue/runtime/routing';
 import { Hono } from 'hono';
 import { Triage } from './agents/triage/agent.ts';
+import { channel as resendChannel } from './channels/resend.ts';
 
 const app = new Hono();
 
@@ -403,5 +404,9 @@ app.get('/', (c) => c.html(PAGE));
 
 // Conversations live at POST/GET /agents/triage/<conversation-id>
 app.route('/agents/triage', createAgentRouter(Triage));
+
+// REFERENCE-ONLY (branch `reference-email`): verified Resend email ingress.
+// Inbound webhook: POST /channels/resend/webhook
+app.route('/channels/resend', resendChannel.route());
 
 export default app;
