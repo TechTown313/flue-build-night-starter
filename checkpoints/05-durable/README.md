@@ -76,7 +76,7 @@ curl 'http://localhost:5173/agents/triage/break-me'
 Now put the real model back and re-run the same curls:
 
 ```ts
-useModel('cloudflare/@cf/qwen/qwen3-30b-a3b-fp8');
+useModel('cloudflare/@cf/zai-org/glm-4.7-flash');
 ```
 
 ## Did it work?

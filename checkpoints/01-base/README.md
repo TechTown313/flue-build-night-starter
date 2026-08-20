@@ -7,7 +7,7 @@ agent demos stop; for us it's the floor, not the finish.
 
 One file does all the work: `src/agents/triage/agent.ts` is a `'use agent'`
 TypeScript file whose exported `Triage()` function calls a single hook —
-`useModel('cloudflare/@cf/qwen/qwen3-30b-a3b-fp8')` — and returns plain-English
+`useModel('cloudflare/@cf/zai-org/glm-4.7-flash')` — and returns plain-English
 instructions (the return value IS the agent's system prompt). `src/app.ts` is the
 front door: a Hono router that mounts the agent at
 `/agents/triage/<conversation-id>` via `createAgentRouter(Triage)`. The line
