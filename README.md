@@ -9,7 +9,9 @@ structured action plan, and hands the stakeholder update to a teammate agent —
 then survives being killed mid-conversation. All on a free Cloudflare account.
 No credit card, no API keys, anywhere.
 
-Everything below is copy-paste. You never need to compose a command yourself.
+Everything below is copy-paste. You never need to compose a command yourself
+— Windows users just pick from two ready-made variants at the one step where
+that matters (marked below).
 
 Two installs are assumed: **Node 22 LTS** (from [nodejs.org](https://nodejs.org)) and the free
 **VS Code** editor (from [code.visualstudio.com](https://code.visualstudio.com)) — VS Code is
@@ -47,7 +49,7 @@ Durable Object, one memory. The empty-looking folders aren't clutter, they're
 the map: your customer-support / founder-ops / program-ops variant is a sibling
 folder, same shape.
 
-## Quickstart (3 commands)
+## Quickstart (4 commands)
 
 Open a terminal in this folder, then paste each line and press Enter:
 
@@ -55,15 +57,63 @@ Open a terminal in this folder, then paste each line and press Enter:
 npm install
 ```
 
+**✅ Did it work?** The terminal shows a list of packages added and ends back
+at a plain prompt, with no lines starting "npm error". A few warnings are
+normal and fine to ignore.
+
+```bash
+npx wrangler login
+```
+
+Even though you're running everything on your own laptop, the agent's model
+itself runs on Cloudflare Workers AI, not on your machine — so the dev server
+needs to know whose free Cloudflare account to use. This command opens a
+browser tab for you to approve; don't have a Cloudflare account yet? Sign up
+free at [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up),
+then run the command again.
+
+**✅ Did it work?** The terminal prints "Successfully logged in" and you can
+close the browser tab. Broken looks like: the command errors out instead of
+printing that, or a later `npm run preflight` / dev-server run tells you
+you're not logged in — either way, run this command again.
+
 ```bash
 npm run preflight
 ```
 
-All green? Start the agent's server (leave this running — this is **Terminal 1**):
+Preflight now also confirms you're logged in to Cloudflare, along with
+everything else.
+
+**✅ Did it work?** Every line starts with ✅, and the last line says
+"🎉 All green — you are 100% ready for Build Night." Like this:
+
+```
+Build Night preflight check
+---------------------------
+✅ Node 22.x.x — new enough (need 22 or higher)
+✅ Dependencies installed (node_modules is ready)
+✅ Starter files are all in place
+✅ All 6 checkpoints are present (your safety net)
+✅ Logged in to Cloudflare
+---------------------------
+🎉 All green — you are 100% ready for Build Night.
+```
+
+Broken looks like: one or more lines starting with ❌, followed by
+"Some checks failed — see the ❌ lines above for the fix." Each ❌ line
+tells you the exact fix (usually one command) — run it, then run
+`npm run preflight` again. Once you see "All green," start the agent's
+server (leave this running — this is **Terminal 1**):
 
 ```bash
 npx vite dev
 ```
+
+**✅ Did it work?** The terminal prints a few lines and then goes quiet,
+ending with something like `Local: http://localhost:5173/`. That means the
+server is up and ready — leave this terminal alone and open a new one for
+the next step. Broken looks like: the terminal exits back to a prompt on its
+own, or prints an error instead of a `Local:` URL.
 
 Open a **second** terminal in this folder (**Terminal 2**) and talk to your agent:
 
@@ -84,8 +134,14 @@ Read its reply:
 curl 'http://localhost:5173/agents/triage/demo-1'
 ```
 
-**✅ Did it work?** You get the conversation as JSON. Look for a `data.actionPlan` entry
-with four filled-in fields — that's the agent's structured answer:
+**✅ Did it work?** You get the conversation as JSON — this is the conversation
+snapshot that `GET /agents/triage/<id>` (the curl you just ran) returns. Look for a
+`data.actionPlan` entry with four filled-in fields — that's the agent's structured
+answer. The agent writes it itself, via `useDataWriter('actionPlan', …)` in
+`src/agents/triage/agent.ts`, validated against the schema in
+`src/agents/triage/schema.ts`; and because it's plain JSON, anything that can read
+JSON can consume it — the kit's own web UI at [http://localhost:5173/](http://localhost:5173/)
+(`src/app.ts`) reads this same field to draw the action-plan card you'll see later.
 
 ```json
 {
@@ -224,6 +280,9 @@ Glossary, in plain English:
 ```bash
 npx wrangler login
 ```
+
+You already did this in Quickstart, so this step is usually a no-op — you only
+need to run it again if a command tells you you're not logged in.
 
 ```bash
 npx vite build && npx wrangler deploy

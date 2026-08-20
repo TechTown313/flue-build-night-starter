@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // npm run preflight — checks your laptop is ready for Build Night.
-// Prints plain-English ✅ / ❌ lines. No changes are made to anything.
+// Prints plain-English ✅ / ❌ / ⚠️ lines. No changes are made to anything
+// (the Cloudflare login check only reads your existing wrangler session).
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -60,6 +62,43 @@ check(
   'All 6 checkpoints are present (your safety net)',
   `Expected 6 checkpoint folders in checkpoints/, found ${cpCount}. Re-unzip the starter kit.`,
 );
+
+// 5. Logged in to Cloudflare (Workers AI runs on Cloudflare, even in local dev)
+if (!depsOk) {
+  console.log('⚠️  Skipping the Cloudflare login check — node_modules is not installed yet. Run  npm install  first, then run preflight again.');
+} else {
+  const wranglerBin = path.join(root, 'node_modules', 'wrangler', 'bin', 'wrangler.js');
+  if (!fs.existsSync(wranglerBin)) {
+    console.log('⚠️  Skipping the Cloudflare login check — wrangler is not installed yet. Run  npm install  first, then run preflight again.');
+  } else {
+    let output = '';
+    try {
+      output = execFileSync(process.execPath, [wranglerBin, 'whoami'], {
+        stdio: 'pipe',
+        encoding: 'utf8',
+        timeout: 30000,
+        env: { ...process.env, NO_COLOR: '1', WRANGLER_SEND_METRICS: 'false' },
+      });
+    } catch (err) {
+      output = `${err.stdout || ''}${err.stderr || ''}`;
+    }
+
+    if (/you are logged in/i.test(output)) {
+      check(true, 'Logged in to Cloudflare');
+    } else if (/not authenticated/i.test(output) || /please run/i.test(output)) {
+      check(
+        false,
+        '',
+        "Not logged in to Cloudflare yet. Fix: run  npx wrangler login   (a browser tab opens — approve it), then run preflight again.",
+      );
+    } else {
+      // Not counted as a pass/fail — could just be no network right now.
+      console.log(
+        "⚠️  Couldn't reach Cloudflare to check your login status. Make sure you're online, and that you've already run  npx wrangler login  — then run preflight again.",
+      );
+    }
+  }
+}
 
 console.log('---------------------------');
 if (allGood) {
