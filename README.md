@@ -270,3 +270,9 @@ founder ops, or program ops by changing only that text, the category words, and
 copy `triage/` to `agents/<your-name>/`, rename the function, add a migration
 entry — that's Part 2 territory. Slides, cheatsheet, and templates live on the
 event playbook page.
+
+## Go deeper
+
+- **DeepWiki: this starter** — https://deepwiki.com/TechTown313/flue-build-night-starter — an AI-generated wiki of this exact repo; ask it questions about the code you just built on.
+- **DeepWiki: Flue internals** — https://deepwiki.com/withastro/flue — the same for the framework itself (hooks, durability, the build step that turns your agent file into a Durable Object).
+- **Flue docs** — https://flueframework.com/docs/ — the official guides and reference.
